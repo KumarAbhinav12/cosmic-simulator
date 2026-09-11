@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cosmic N-Body Astrophysics Simulator (RK4 & GR)</title>
+  <link rel="stylesheet" href="css/styles.css">
+  
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <div id="app-header" class="glass-panel">
+    <h1>Cosmic Simulator</h1>
+    <span class="badge">RK4 & Relativity 1PN</span>
+  </div>
+
+  <!-- Left Sidebar Controls -->
+  <div id="control-panel" class="glass-panel">
+    
+    <div class="panel-section">
+      <div class="panel-title">Cosmic Scenario</div>
+      <select id="scenario-select">
+        <option value="solarSystem">🪐 Solar System & Belt</option>
+        <option value="relativisticPrecession">🌌 Relativistic Mercury Precession (GR)</option>
+        <option value="lagrangeTrojans">🛸 Lagrange Points & Trojan Asteroids</option>
+        <option value="tidalDisruption">💥 Tidal Disruption Event (TDE)</option>
+        <option value="circumbinary">☀️ Circumbinary System (Tatooine)</option>
+        <option value="galaxyCollision">🌌 Colliding Spiral Galaxies</option>
+      </select>
+    </div>
+
+    <!-- Integrator & Precision Controls -->
+    <div class="panel-section">
+      <div class="panel-title">Numerical Solver & Physics</div>
+      
+      <div class="control-group">
+        <label>Numerical Integrator</label>
+        <select id="integrator-select">
+          <option value="rk4">📐 Runge-Kutta 4th Order (RK4)</option>
+          <option value="verlet">⚡ Velocity Verlet</option>
+          <option value="euler">🔹 Symplectic Euler</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Time Speed <span id="time-val" class="val">1.0x</span></label>
+        <input type="range" id="time-slider" min="0.1" max="4.0" step="0.1" value="1.0">
+      </div>
+
+      <div class="control-group">
+        <label>Gravity Constant (G) <span id="g-val" class="val">1.0</span></label>
+        <input type="range" id="g-slider" min="0.1" max="5.0" step="0.1" value="1.0">
+      </div>
+
+      <div class="toggle-row">
+        <span>Post-Newtonian GR (1PN)</span>
+        <label class="switch">
+          <input type="checkbox" id="gr-toggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <span>Roche Limit Disruption</span>
+        <label class="switch">
+          <input type="checkbox" id="roche-toggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <span>Keplerian Orbit Overlay</span>
+        <label class="switch">
+          <input type="checkbox" id="orbits-toggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <span>Lagrange Points (L1-L5)</span>
+        <label class="switch">
+          <input type="checkbox" id="lagrange-toggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <span>Orbit Trails</span>
+        <label class="switch">
+          <input type="checkbox" id="trails-toggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="btn-grid">
+        <button id="pause-btn" class="btn btn-primary">⏸ Pause</button>
+        <button id="clear-btn" class="btn btn-danger">🗑️ Clear All</button>
+      </div>
+    </div>
+
+    <!-- Spawner Tool -->
+    <div class="panel-section">
+      <div class="panel-title">Celestial Spawner Tool</div>
+      
+      <button id="spawn-mode-btn" class="btn btn-primary">🚀 Toggle Spawn Mode</button>
+      <div class="tooltip">Click & drag on screen in Spawn Mode to set launch position and velocity vector arrow!</div>
+
+      <div class="control-group">
+        <label>Object Type</label>
+        <select id="spawn-type">
+          <option value="planet">🪐 Planet</option>
+          <option value="star">☀️ Glowing Star</option>
+          <option value="blackhole">🕳️ Black Hole</option>
+          <option value="dust">✨ Cosmic Dust</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Mass <span id="spawn-mass-val" class="val">1.0</span></label>
+        <input type="range" id="spawn-mass" min="0.1" max="500.0" step="0.5" value="1.0">
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right Telemetry & Inspector Panel -->
+  <div id="telemetry-panel" class="glass-panel">
+    <div class="panel-title">System Telemetry</div>
+    
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="label">Bodies</span>
+        <span id="stat-body-count" class="value">0</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">Energy Drift</span>
+        <span id="stat-drift" class="value">0.00%</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">Kinetic E</span>
+        <span id="stat-ke" class="value">0.0</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">Potential U</span>
+        <span id="stat-pe" class="value">0.0</span>
+      </div>
+    </div>
+
+    <!-- Live Energy Conservation Canvas Chart -->
+    <div class="panel-title" style="margin-top: 6px;">Energy Conservation Plot</div>
+    <div style="width: 100%; height: 60px; background: rgba(0,0,0,0.4); border-radius: 8px; border: 1px solid var(--panel-border); overflow: hidden;">
+      <canvas id="energy-chart" width="248" height="60"></canvas>
+    </div>
+
+    <div class="panel-title" style="margin-top: 8px;">Keplerian Inspector</div>
+    
+    <!-- Target Selection Dropdown -->
+    <div class="control-group">
+      <label>Select Target Body</label>
+      <select id="body-inspector-select">
+        <option value="">-- None Selected --</option>
+      </select>
+    </div>
+
+    <!-- Editable Target Name Input -->
+    <div class="control-group">
+      <label>Edit Target Name</label>
+      <input type="text" id="inspector-name-input" placeholder="Select a body to rename..." disabled>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="label">Semi-Major (a)</span>
+        <span id="inspector-sma" class="value">--</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">Eccentricity (e)</span>
+        <span id="inspector-ecc" class="value">--</span>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="label">Period (T)</span>
+        <span id="inspector-period" class="value">--</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">Speed (v)</span>
+        <span id="inspector-speed" class="value">--</span>
+      </div>
+    </div>
+
+    <button id="follow-btn" class="btn" disabled>🎥 Follow Object</button>
+  </div>
+
+  <div id="bottom-bar" class="glass-panel">
+    <div id="spawn-badge" class="mode-badge" style="display: none;">
+      🚀 SPAWN MODE: Click & Drag to launch body with velocity vector!
+    </div>
+    <div class="tooltip">Controls: Left-Click + Drag to rotate | Right-Click + Drag to pan | Scroll to zoom</div>
+  </div>
+
+  <button id="audio-btn" class="btn glass-panel" title="Toggle Cosmic Sound Synth">🔇</button>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
