@@ -1,13 +1,15 @@
 /**
- * High-End Photorealistic 3D WebGL Renderer with Unreal Bloom Post-Processing
+ * High-End Photorealistic 3D WebGL Renderer with TransformControls & 3D Ruler
  * - Three.js EffectComposer + UnrealBloomPass Pipeline
+ * - TransformControls 3D Translation Gizmo (X/Y/Z Axis Drag Handles)
+ * - Interactive 3D Distance Vector Measurement Tape
  * - Procedural Surface Maps & Atmospheric Fresnel Scattering Shaders
- * - Dynamic 3D Spacetime Curvature Grid Mesh (General Relativity Gravity Wells)
- * - 3D Collision Particle Explosions & Expanding Shockwave Rings
+ * - Dynamic 3D Spacetime Curvature Grid Mesh
  */
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -42,9 +44,9 @@ export class CosmicRenderer {
     this.renderPass = new RenderPass(this.scene, this.camera);
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.2, // Bloom strength
-      0.4, // Radius
-      0.2  // Threshold
+      1.2,
+      0.4,
+      0.2
     );
     this.outputPass = new OutputPass();
 
@@ -60,6 +62,21 @@ export class CosmicRenderer {
     this.controls.maxDistance = 3000;
     this.controls.minDistance = 1;
 
+    // 3D Transform Controls (Move Gizmo)
+    this.transformControls = new TransformControls(this.camera, this.renderer.domElement);
+    this.transformControls.size = 0.85;
+    this.scene.add(this.transformControls);
+
+    // Disable OrbitControls while dragging 3D Gizmo
+    this.transformControls.addEventListener('dragging-changed', (event) => {
+      this.controls.enabled = !event.value;
+    });
+
+    this.onGizmoChange = null;
+    this.transformControls.addEventListener('change', () => {
+      if (this.onGizmoChange) this.onGizmoChange();
+    });
+
     // Lighting
     this.ambientLight = new THREE.AmbientLight(0x333344, 0.7);
     this.scene.add(this.ambientLight);
@@ -69,6 +86,9 @@ export class CosmicRenderer {
 
     // 3D Spacetime Curvature Grid Mesh
     this.createSpacetimeGrid();
+
+    // 3D Distance Ruler Vector Line
+    this.createRulerLine();
 
     // Particle Explosion Emitter System
     this.explosions = [];
@@ -84,6 +104,7 @@ export class CosmicRenderer {
     this.showOrbits = true;
     this.showLagrange = false;
     this.showSpacetimeGrid = true;
+    this.gizmoActive = false;
 
     // Velocity Vector Drag Indicator
     this.vectorArrow = new THREE.ArrowHelper(
@@ -166,6 +187,44 @@ export class CosmicRenderer {
     this.scene.add(this.gridMesh);
   }
 
+  createRulerLine() {
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(2 * 3);
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+    const material = new THREE.LineDashedMaterial({
+      color: 0x00f0ff,
+      dashSize: 1,
+      gapSize: 0.5,
+      linewidth: 2,
+      transparent: true,
+      opacity: 0.95
+    });
+
+    this.rulerMesh = new THREE.Line(geometry, material);
+    this.rulerMesh.visible = false;
+    this.scene.add(this.rulerMesh);
+  }
+
+  updateRulerLine(bodyA, bodyB) {
+    if (!bodyA || !bodyB) {
+      this.rulerMesh.visible = false;
+      return;
+    }
+
+    const positions = this.rulerMesh.geometry.attributes.position.array;
+    positions[0] = bodyA.position.x;
+    positions[1] = bodyA.position.y;
+    positions[2] = bodyA.position.z;
+
+    positions[3] = bodyB.position.x;
+    positions[4] = bodyB.position.y;
+    positions[5] = bodyB.position.z;
+
+    this.rulerMesh.geometry.attributes.position.needsUpdate = true;
+    this.rulerMesh.visible = true;
+  }
+
   updateSpacetimeGrid(bodies, G) {
     if (!this.showSpacetimeGrid || !this.gridMesh) {
       if (this.gridMesh) this.gridMesh.visible = false;
@@ -186,7 +245,6 @@ export class CosmicRenderer {
         const distSq = dx * dx + dz * dz + 4.0;
         const dist = Math.sqrt(distSq);
 
-        // Einstein Gravity Well Deformation
         displacement -= Math.min(18.0, (G * b.mass * 2.2) / (dist + 2.0));
       }
 
@@ -285,7 +343,6 @@ export class CosmicRenderer {
       core.userData.bodyId = body.id;
       group.add(core);
 
-      // Fresnel Atmosphere Outer Halo
       const atmosMat = TextureGenerator.createAtmosphereMaterial(body.color);
       const atmosMesh = new THREE.Mesh(new THREE.SphereGeometry(body.radius * 1.12, 32, 32), atmosMat);
       atmosMesh.userData.bodyId = body.id;
@@ -473,6 +530,7 @@ export class CosmicRenderer {
   removeBodyMesh(id) {
     const group = this.bodyMeshes.get(id);
     if (group) {
+      this.transformControls.detach();
       this.scene.remove(group);
       this.bodyMeshes.delete(id);
     }
@@ -488,6 +546,19 @@ export class CosmicRenderer {
       this.scene.remove(ellipse);
       this.orbitEllipses.delete(id);
     }
+  }
+
+  attachGizmo(bodyId) {
+    const group = this.bodyMeshes.get(bodyId);
+    if (group) {
+      this.transformControls.attach(group);
+      this.gizmoActive = true;
+    }
+  }
+
+  detachGizmo() {
+    this.transformControls.detach();
+    this.gizmoActive = false;
   }
 
   sync(physicsEngine, selectedBodyId = null, showTrails = true) {
@@ -523,7 +594,15 @@ export class CosmicRenderer {
         meshGroup = this.createBodyMesh(body);
       }
 
-      meshGroup.position.set(body.position.x, body.position.y, body.position.z);
+      // Sync position unless currently dragging with 3D Gizmo
+      if (!this.gizmoActive || selectedBodyId !== body.id || !this.transformControls.dragging) {
+        meshGroup.position.set(body.position.x, body.position.y, body.position.z);
+      } else {
+        // Update physics position from 3D gizmo drag position
+        body.position.x = meshGroup.position.x;
+        body.position.y = meshGroup.position.y;
+        body.position.z = meshGroup.position.z;
+      }
 
       const line = this.trailLines.get(body.id);
       if (line) {
@@ -561,7 +640,6 @@ export class CosmicRenderer {
     }
 
     this.controls.update();
-    // Render using Unreal Bloom EffectComposer
     this.composer.render();
   }
 

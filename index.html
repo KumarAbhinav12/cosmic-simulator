@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cosmic N-Body Astrophysics Simulator (Unreal Bloom & GR)</title>
+  <title>Cosmic N-Body Astrophysics Simulator (RK4 & 3D Tools)</title>
   <link rel="stylesheet" href="css/styles.css">
   
   <script type="importmap">
@@ -20,7 +20,7 @@
 
   <div id="app-header" class="glass-panel">
     <h1>Cosmic Simulator</h1>
-    <span class="badge">Unreal Bloom & 3D Spacetime</span>
+    <span class="badge">3D Gizmo & Distance Tape</span>
   </div>
 
   <!-- Left Sidebar Controls -->
@@ -36,6 +36,17 @@
         <option value="circumbinary">☀️ Circumbinary System (Tatooine)</option>
         <option value="galaxyCollision">🌌 Colliding Spiral Galaxies</option>
       </select>
+    </div>
+
+    <!-- 3D Interactive Tool Mode Selection -->
+    <div class="panel-section">
+      <div class="panel-title">3D Interaction Tool Mode</div>
+      <div class="btn-grid-3">
+        <button id="tool-select-btn" class="btn active">🖱️ Inspect</button>
+        <button id="tool-move-btn" class="btn">🖐️ Move 3D</button>
+        <button id="tool-ruler-btn" class="btn">📏 Ruler</button>
+      </div>
+      <div id="tool-desc" class="tooltip">Click objects in 3D to inspect Keplerian orbital elements.</div>
     </div>
 
     <!-- Integrator & Precision Controls -->
@@ -167,6 +178,29 @@
     <div class="panel-title" style="margin-top: 6px;">Energy Conservation Plot</div>
     <div style="width: 100%; height: 60px; background: rgba(0,0,0,0.4); border-radius: 8px; border: 1px solid var(--panel-border); overflow: hidden;">
       <canvas id="energy-chart" width="248" height="60"></canvas>
+    </div>
+
+    <!-- 3D Ruler Distance Measurement Card -->
+    <div id="ruler-card" class="panel-section" style="display: none; margin-top: 8px;">
+      <div class="panel-title">3D Distance Tape Readout</div>
+      <div class="stat-card">
+        <span class="label">Vector Target A ➔ B</span>
+        <span id="ruler-pair-names" class="value" style="font-size: 0.8rem;">Select 2 bodies...</span>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <span class="label">Distance (d)</span>
+          <span id="ruler-dist" class="value">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">Rel Speed (v)</span>
+          <span id="ruler-rel-v" class="value">--</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <span class="label">Gravity Force (F_grav)</span>
+        <span id="ruler-force" class="value">--</span>
+      </div>
     </div>
 
     <div class="panel-title" style="margin-top: 8px;">Keplerian Inspector</div>

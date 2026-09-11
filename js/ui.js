@@ -1,5 +1,5 @@
 /**
- * UI Controller & Sound Engine (Upgraded with 3D Spacetime Grid & Shockwave Explosions)
+ * UI Controller & Sound Engine (Upgraded with 3D Move Gizmos & 3D Ruler Measurement Tape)
  */
 
 import * as THREE from 'three';
@@ -123,7 +123,13 @@ export class UIController {
     this.timeScale = 1.0;
     this.showTrails = true;
     this.spawnMode = false;
+
+    // Tool Modes: 'inspect', 'move', 'ruler'
+    this.activeTool = 'inspect';
+
     this.selectedBodyId = null;
+    this.rulerBodyAId = null;
+    this.rulerBodyBId = null;
     this.lastPopulatedBodyCount = -1;
 
     this.spawnType = 'planet';
@@ -166,12 +172,48 @@ export class UIController {
         if (Scenarios[val]) {
           Scenarios[val](this.physics);
           this.selectedBodyId = null;
+          this.rulerBodyAId = null;
+          this.rulerBodyBId = null;
           this.renderer.trackedBodyId = null;
+          this.renderer.detachGizmo();
           this.lastPopulatedBodyCount = -1;
+          this.onSelectionChanged();
         }
       });
     }
 
+    // 3D Tool Mode Switchers
+    const btnSelect = document.getElementById('tool-select-btn');
+    const btnMove = document.getElementById('tool-move-btn');
+    const btnRuler = document.getElementById('tool-ruler-btn');
+    const toolDesc = document.getElementById('tool-desc');
+    const rulerCard = document.getElementById('ruler-card');
+
+    const setToolMode = (mode) => {
+      this.activeTool = mode;
+      btnSelect.classList.toggle('active', mode === 'inspect');
+      btnMove.classList.toggle('active', mode === 'move');
+      btnRuler.classList.toggle('active', mode === 'ruler');
+
+      if (rulerCard) rulerCard.style.display = mode === 'ruler' ? 'block' : 'none';
+
+      if (mode === 'inspect') {
+        if (toolDesc) toolDesc.textContent = 'Click objects in 3D to inspect Keplerian orbital elements.';
+        this.renderer.detachGizmo();
+      } else if (mode === 'move') {
+        if (toolDesc) toolDesc.textContent = 'Select an object to display 3D translation arrow handles and drag it in 3D space.';
+        if (this.selectedBodyId) this.renderer.attachGizmo(this.selectedBodyId);
+      } else if (mode === 'ruler') {
+        if (toolDesc) toolDesc.textContent = 'Click two objects in 3D space to measure distance, relative velocity, and gravitational force.';
+        this.renderer.detachGizmo();
+      }
+    };
+
+    if (btnSelect) btnSelect.addEventListener('click', () => setToolMode('inspect'));
+    if (btnMove) btnMove.addEventListener('click', () => setToolMode('move'));
+    if (btnRuler) btnRuler.addEventListener('click', () => setToolMode('ruler'));
+
+    // Inspector Target Body Select Dropdown
     const bodyInspectorSelect = document.getElementById('body-inspector-select');
     const nameInput = document.getElementById('inspector-name-input');
     if (bodyInspectorSelect) {
@@ -281,7 +323,10 @@ export class UIController {
       clearBtn.addEventListener('click', () => {
         this.physics.clear();
         this.selectedBodyId = null;
+        this.rulerBodyAId = null;
+        this.rulerBodyBId = null;
         this.renderer.trackedBodyId = null;
+        this.renderer.detachGizmo();
         this.lastPopulatedBodyCount = -1;
         this.onSelectionChanged();
       });
@@ -295,6 +340,7 @@ export class UIController {
         spawnBtn.classList.toggle('active', this.spawnMode);
         if (spawnBadge) spawnBadge.style.display = this.spawnMode ? 'flex' : 'none';
         this.renderer.controls.enabled = !this.spawnMode;
+        if (this.spawnMode) this.renderer.detachGizmo();
       });
     }
 
@@ -348,6 +394,13 @@ export class UIController {
           nameInput.disabled = false;
         }
         if (followBtn) followBtn.disabled = false;
+
+        // Attach Move Gizmo if active mode is 'move'
+        if (this.activeTool === 'move') {
+          this.renderer.attachGizmo(b.id);
+        } else {
+          this.renderer.detachGizmo();
+        }
         return;
       }
     }
@@ -359,6 +412,7 @@ export class UIController {
       nameInput.placeholder = 'Select a body...';
     }
     if (followBtn) followBtn.disabled = true;
+    this.renderer.detachGizmo();
   }
 
   get3DPointFromMouse(e) {
@@ -403,8 +457,19 @@ export class UIController {
           if (hitId) break;
         }
 
-        this.selectedBodyId = hitId || null;
-        this.onSelectionChanged();
+        if (this.activeTool === 'ruler') {
+          if (hitId) {
+            if (!this.rulerBodyAId || (this.rulerBodyAId && this.rulerBodyBId)) {
+              this.rulerBodyAId = hitId;
+              this.rulerBodyBId = null;
+            } else if (this.rulerBodyAId && !this.rulerBodyBId && hitId !== this.rulerBodyAId) {
+              this.rulerBodyBId = hitId;
+            }
+          }
+        } else {
+          this.selectedBodyId = hitId || null;
+          this.onSelectionChanged();
+        }
       }
     });
 
@@ -490,6 +555,52 @@ export class UIController {
     ctx.stroke();
   }
 
+  updateRulerTelemetry() {
+    const pairEl = document.getElementById('ruler-pair-names');
+    const distEl = document.getElementById('ruler-dist');
+    const relVEl = document.getElementById('ruler-rel-v');
+    const forceEl = document.getElementById('ruler-force');
+
+    if (!pairEl) return;
+
+    const bA = this.physics.bodies.find(b => b.id === this.rulerBodyAId);
+    const bB = this.physics.bodies.find(b => b.id === this.rulerBodyBId);
+
+    if (bA && bB) {
+      this.renderer.updateRulerLine(bA, bB);
+
+      const dx = bB.position.x - bA.position.x;
+      const dy = bB.position.y - bA.position.y;
+      const dz = bB.position.z - bA.position.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      const dvx = bB.velocity.x - bA.velocity.x;
+      const dvy = bB.velocity.y - bA.velocity.y;
+      const dvz = bB.velocity.z - bA.velocity.z;
+      const relV = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
+
+      const force = (this.physics.G * bA.mass * bB.mass) / Math.max(1.0, dist * dist);
+
+      pairEl.textContent = `${bA.name} ➔ ${bB.name}`;
+      if (distEl) distEl.textContent = `${dist.toFixed(2)} units`;
+      if (relVEl) relVEl.textContent = `${relV.toFixed(2)} v`;
+      if (forceEl) forceEl.textContent = `${force.toFixed(2)} N`;
+
+    } else if (bA) {
+      pairEl.textContent = `${bA.name} ➔ Select 2nd body...`;
+      if (distEl) distEl.textContent = '--';
+      if (relVEl) relVEl.textContent = '--';
+      if (forceEl) forceEl.textContent = '--';
+      this.renderer.updateRulerLine(null, null);
+    } else {
+      pairEl.textContent = 'Select 2 bodies in 3D...';
+      if (distEl) distEl.textContent = '--';
+      if (relVEl) relVEl.textContent = '--';
+      if (forceEl) forceEl.textContent = '--';
+      this.renderer.updateRulerLine(null, null);
+    }
+  }
+
   populateInspectorDropdown() {
     const dropdown = document.getElementById('body-inspector-select');
     if (!dropdown) return;
@@ -535,6 +646,7 @@ export class UIController {
 
     this.drawEnergyChart();
     this.populateInspectorDropdown();
+    this.updateRulerTelemetry();
 
     const inspectorSma = document.getElementById('inspector-sma');
     const inspectorEcc = document.getElementById('inspector-ecc');
