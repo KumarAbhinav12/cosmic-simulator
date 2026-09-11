@@ -1,5 +1,5 @@
 /**
- * UI Controller & Sound Engine (Interactive Target Name Selection & Real-Time Renaming)
+ * UI Controller & Sound Engine (Upgraded with 3D Spacetime Grid & Shockwave Explosions)
  */
 
 import * as THREE from 'three';
@@ -140,12 +140,21 @@ export class UIController {
 
     this.physics.events.onCollision = (survivor, victim) => {
       this.sound.playCollisionSound(victim.mass);
+      if (this.renderer.triggerExplosion) {
+        this.renderer.triggerExplosion(survivor.position, 0x00f0ff);
+      }
     };
-    this.physics.events.onBlackHoleConsume = () => {
+    this.physics.events.onBlackHoleConsume = (survivor, victim) => {
       this.sound.playBlackHoleSound();
+      if (this.renderer.triggerExplosion) {
+        this.renderer.triggerExplosion(survivor.position, 0x9d4edd);
+      }
     };
-    this.physics.events.onTidalDisruption = () => {
+    this.physics.events.onTidalDisruption = (primary, secondary) => {
       this.sound.playTidalDisruptionSound();
+      if (this.renderer.triggerExplosion) {
+        this.renderer.triggerExplosion(secondary.position, 0xff0055);
+      }
     };
   }
 
@@ -163,7 +172,6 @@ export class UIController {
       });
     }
 
-    // Inspector Target Body Select Dropdown
     const bodyInspectorSelect = document.getElementById('body-inspector-select');
     const nameInput = document.getElementById('inspector-name-input');
     if (bodyInspectorSelect) {
@@ -174,15 +182,12 @@ export class UIController {
       });
     }
 
-    // Live Target Name Editing Input Field
     if (nameInput) {
       nameInput.addEventListener('input', (e) => {
         if (this.selectedBodyId) {
           const b = this.physics.bodies.find(body => body.id === this.selectedBodyId);
           if (b) {
             b.name = e.target.value.trim() || 'Unnamed Object';
-            
-            // Update dropdown option text live
             if (bodyInspectorSelect) {
               const opt = bodyInspectorSelect.querySelector(`option[value="${b.id}"]`);
               if (opt) {
@@ -191,6 +196,13 @@ export class UIController {
             }
           }
         }
+      });
+    }
+
+    const gridToggle = document.getElementById('grid-toggle');
+    if (gridToggle) {
+      gridToggle.addEventListener('change', (e) => {
+        this.renderer.showSpacetimeGrid = e.target.checked;
       });
     }
 
